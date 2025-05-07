@@ -1,0 +1,95 @@
+const express = require("express");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+const app = express();
+const PORT = 5000;
+
+// Create upload folders if not exists
+["uploads/certificates", "uploads/proofs"].forEach(dir => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+});
+
+// Multer storage configs
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    if (file.fieldname === "certificate") {
+      cb(null, "uploads/certificates/");
+    } else if (file.fieldname === "proof") {
+      cb(null, "uploads/proofs/");
+    } else {
+      cb(new Error("Invalid field"));
+    }
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const uniqueName = `${Date.now()}-${file.fieldname}${ext}`;
+    cb(null, uniqueName);
+  },
+});
+
+// File filter
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
+  if (!allowedTypes.includes(file.mimetype)) {
+    cb(new Error("Only PDF, JPEG, and PNG files are allowed"), false);
+  } else {
+    cb(null, true);
+  }
+};
+
+// Multer middleware
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: fileFilter,
+}).fields([
+  { name: "certificate", maxCount: 1 },
+  { name: "proof", maxCount: 1 },
+]);
+
+app.use(express.json());
+
+// Upload route
+app.post("/upload", (req, res) => {
+  upload(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const {
+      certificateTitle,
+      issuedTo,
+      issuedBy,
+      issueDate,
+      proofOfCertificate,
+      typeOfCertificate,
+    } = req.body;
+
+    const certificate = req.files["certificate"]?.[0];
+    const proof = req.files["proof"]?.[0];
+
+    if (!certificate || !proof) {
+      return res.status(400).json({ error: "Both certificate and proof are required." });
+    }
+
+    return res.status(200).json({
+      message: "Upload successful",
+      data: {
+        certificateTitle,
+        issuedTo,
+        issuedBy,
+        issueDate,
+        proofOfCertificate,
+        typeOfCertificate,
+        certificatePath: certificate.path,
+        proofPath: proof.path,
+      },
+    });
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
